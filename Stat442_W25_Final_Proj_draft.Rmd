@@ -1,0 +1,259 @@
+---
+title: "Final Project"
+author: "Stat 442 / Stat 842 / CM 762"
+date: "Due April 22nd 2025"
+output: pdf_document
+---
+
+
+```{r}
+library(tidyverse)
+data_raw <- read_csv("Apartment Building Evaluation.csv")
+colnames(data_raw)
+```
+
+\newpage 
+
+**Option 1)** One visualization should highlight multiple continuous variables in combination. A dot plot / scatter plot is a start, but it should go further than that by mapping something else continuous to an aestetic other than x and y coordinates, such as colour or size. Examples include: contour plot, scatterplot, 3D density, 3D surface. A line plot with a secondary continuous varaible mapped to colour, tile plots, hexbins.
+
+```{r}
+library(tidyverse)
+library(lubridate)
+
+# Data Cleaning:
+# Extract EvaluationYear from EVALUATION_COMPLETED_ON (format "2022-06-29") AND
+# Compute BuildingAge = EvaluationYear - YEAR_BUILT
+data <- data_raw %>%
+  mutate(EvaluationYear = year(ymd(EVALUATION_COMPLETED_ON)),
+         BuildingAge = EvaluationYear - YEAR_BUILT)
+
+# Plot the hexbins:
+# X axis: BuildingAge (EvaluationYear - YEAR_BUILT)
+# Y axis: SCORE (Evaluation score)
+# Color: CONFIRMED_UNITS (Number of confirmed units)
+ggplot(data, aes(x = BuildingAge, y = SCORE,)) +
+    stat_binhex(bins = 60,
+              aes(fill = ..count..),color = NA,alpha = 0.8) +
+    scale_fill_viridis_c(name = "Unit Count"
+    ) +
+  labs(title = "Building Age VS Evaluation Score",
+       subtitle = "Color represents count of points(Number of confirmed units) inside",
+       x = "Building Age (Years)",
+       y = "Evaluation Score") +
+  theme_minimal()
+```
+
+
+**Option 2)** One visualization should highlight geographical data. This could either use shape files like we did in assignment 4, or it could use maps like we did in the final week of class. Make sure there is enough of your own work to justify including it (don't just plop in a shape file or a map and call it a day)
+
+```{r}
+library(tidyverse)
+library(sf)
+library(tmap)
+
+
+# Toronto ward boundaries from shapefile
+wards <- st_read("25-ward/WARD_WGS84.shp")%>%
+  mutate(
+    AREA_S_CD = as.character(as.integer(AREA_S_CD)))
+
+# Aggregate apartment evaluation data by ward
+ward_scores <- data_raw %>%
+  filter(!is.na(SCORE)) %>%            # Remove records without a score
+  group_by(WARD) %>%
+  summarise(
+    avg_score   = mean(SCORE, na.rm = TRUE),
+    eval_areas  = sum(NO_OF_AREAS_EVALUATED, na.rm = TRUE),
+    n_buildings = n()
+  )
+
+# Merge ward boundaries with aggregated scores
+ward_map <- merge(
+  x = wards,
+  y = ward_scores,
+  by.x  = "AREA_S_CD",
+  by.y  = "WARD",
+  all.x = TRUE
+)
+
+# Create choropleth of average score by ward
+map_plot <- tm_shape(ward_map) +
+  tm_polygons(
+    col         = "avg_score",
+    palette     = "YlGnBu", # good for color blind people
+    title       = "Average Score",
+    border.alpha = 0.5,
+    style       = "cont"
+  ) +
+  tm_layout(
+    main.title   = "Toronto Borough Quality Gradient Map",
+    legend.outside = TRUE
+  )
+
+# Convert apartment points to sf,also filter out missing coordinates
+apt_sf <- data_raw %>%
+  filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%
+  st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326)
+
+point_layer <- tm_shape(apt_sf) +
+  tm_dots(
+    col         = "#E69F00",
+    size        = 0.1,
+    alpha       = 0.6,
+    legend.show = FALSE)
+
+final_map <- map_plot + point_layer
+final_map
+
+```
+
+
+
+
+**Option 3)** One visualization should highlight a substantial categorical element. This could be a grouped, like a line plots with multiple lines, or scatterplots with something mapped to character symbol. It could also use space as a categorical like side-by-side boxplots or violin plots, joy plots / ridgelines, anything faceted, anything with panels or in a multiplot. Geom_image could be an asset too.
+
+```{r}
+library(tidyverse)
+library(ggradar)
+library(scales)
+library(stringr)
+
+facilities <- c(
+  "ENTRANCE_LOBBY", "SECURITY", "ELEVATORS", "STAIRWELLS", "LAUNDRY_ROOMS", 
+  "INTERNAL_GUARDS_HANDRAILS", "GARBAGE_CHUTE_ROOMS", "GARBAGE_BIN_STORAGE_AREA", 
+  "STORAGE_AREAS_LOCKERS", "INTERIOR_WALL_CEILING_FLOOR", "INTERIOR_LIGHTING_LEVELS", 
+  "GRAFFITI", "EXTERIOR_CLADDING", "EXTERIOR_GROUNDS", "EXTERIOR_WALKWAYS", 
+  "BALCONY_GUARDS", "WATER_PEN_EXT_BLDG_ELEMENTS", "PARKING_AREA", "OTHER_FACILITIES"
+)
+
+# transform to long format, group by score category, compute normalized average scores
+facility_scores <- data_raw %>%
+  mutate(score_group = cut(
+    SCORE, 
+    breaks = c(0, 50, 70, 100), 
+    labels = c("Low Score(0-50)", "Medium Score(50-70)", "High Score(70-100)")
+  )) %>%
+  select(score_group, all_of(facilities)) %>%
+  pivot_longer(
+    cols      = -score_group, 
+    names_to  = "facility", 
+    values_to = "score"
+  ) %>%
+  group_by(score_group, facility) %>%
+  summarise(
+    avg_score = mean(score, na.rm = TRUE) / 5,
+    .groups   = "drop"
+  ) %>%
+  mutate(facility = recode(facility,
+    "ENTRANCE_LOBBY"             = "Lobby",
+    "SECURITY"                   = "Security",
+    "ELEVATORS"                  = "Lifts",
+    "STAIRWELLS"                 = "Stairs",
+    "LAUNDRY_ROOMS"              = "Laundry",
+    "INTERNAL_GUARDS_HANDRAILS"  = "Guards/Rails",
+    "GARBAGE_CHUTE_ROOMS"        = "Chutes",
+    "GARBAGE_BIN_STORAGE_AREA"   = "Bins",
+    "STORAGE_AREAS_LOCKERS"      = "Lockers",
+    "INTERIOR_WALL_CEILING_FLOOR"= "Surfaces",
+    "INTERIOR_LIGHTING_LEVELS"   = "Lighting",
+    "GRAFFITI"                   = "Graffiti",
+    "EXTERIOR_CLADDING"          = "Cladding",
+    "EXTERIOR_GROUNDS"           = "Grounds",
+    "EXTERIOR_WALKWAYS"          = "Walkways",
+    "BALCONY_GUARDS"             = "Balcony",
+    "WATER_PEN_EXT_BLDG_ELEMENTS"= "Ext. Elements",
+    "PARKING_AREA"               = "Parking",
+    "OTHER_FACILITIES"           = "Other"
+  ))
+
+facility_scores <- facility_scores %>%
+  mutate(facility = str_wrap(facility, width = 12))
+
+radar_data <- facility_scores %>%
+  pivot_wider(
+    names_from  = facility, 
+    values_from = avg_score
+  )
+
+ggradar(
+  radar_data,
+  grid.min             = 0,
+  grid.mid             = 0.5,
+  grid.max             = 1,
+  values.radar         = c("0%", "50%", "100%"),
+  grid.label.size      = 3,
+  axis.label.size      = 3,
+  axis.label.offset    = 1.2,
+  legend.text.size     = 8,
+  group.point.size     = 2,
+  group.line.width     = 0.7,
+  background.circle.colour = "white",
+  gridline.mid.colour     = "grey80",
+  group.colours        = c(
+    "Low Score(0-50)"    = "#1B9E77",
+    "Medium Score(50-70)" = "#D95F02",
+    "High Score(70-100)"   = "#7570B3"
+  ),
+  # legend settings
+  plot.legend          = TRUE,
+  legend.position      = "bottom"
+) +
+  labs(title = "Facility Sub‑Score Comparison by Score Group") +
+  theme(
+    plot.title = element_text(
+      size  = 16,
+      face  = "bold",
+      hjust = 0.5,
+      vjust = 2
+    )
+  )
+
+```
+
+
+
+**Option 5)** One table using one or more of the table packages that we discussed in class. This should have a large conditional formatting element to it other than just a colour scale like we did in the assignment.
+
+
+```{r}
+library(gt)
+library(dplyr)
+library(gtExtras)
+
+ward_table <- data_raw %>%
+  group_by(WARD, WARDNAME) %>%
+  summarise(
+    avg_score = mean(SCORE, na.rm = TRUE),
+    high_risk = sum(SCORE < 50, na.rm = TRUE),
+    avg_units = mean(CONFIRMED_UNITS, na.rm = TRUE),
+    eval_density = sum(NO_OF_AREAS_EVALUATED) / n(),
+    .groups = "drop"
+  )
+
+ward_table %>%
+  gt() %>%
+  gt_plt_bar(
+    column = eval_density, 
+    width = 50, 
+    color = "#1E90FF",
+    labels = c("low", "high")
+  ) %>%
+  data_color(
+    columns = avg_score,
+    palette = c("red", "yellow", "green"),
+    domain = c(0, 100)
+  ) %>%
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(columns = high_risk, rows = high_risk > 5)
+  ) %>%
+  cols_label(
+    eval_density = "Density"
+  )
+```
+
+
+
+
+
+
