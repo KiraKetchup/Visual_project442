@@ -1,6 +1,6 @@
-Toronto Apartment Building Evaluation Dashboard
+# Toronto Apartment Building Evaluation Dashboard
 
-Interactive Shiny dashboard: Toronto apartment building evaluations.
+## Interactive Shiny dashboard: Toronto apartment building evaluations.
 
 1. Place data files in the app directory:
    Apartment Building Evaluation.csv
@@ -12,7 +12,7 @@ Interactive Shiny dashboard: Toronto apartment building evaluations.
 3. Run the app:
    in app.R click "Run App"
 
-Features
+### Features
 Hexbin Plot: Building age vs scores
 Map: Geographical exploration
 Radar Chart: Facility comparisons
