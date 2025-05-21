@@ -14,7 +14,10 @@
 
 ### Features
 Hexbin Plot: Building age vs scores
+
 Map: Geographical exploration
+
 Radar Chart: Facility comparisons
+
 Ward Table: Interactive statistics
 
